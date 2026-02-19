@@ -10,8 +10,12 @@
 
 <body>
   <div class="drag-bar">⠿</div>
+
   <main id="surface" class="surface">
-    <ul id="treeRoot" class="tree-root" aria-label="todo tree"></ul>
+    <div id="graphContainer" class="graph-container">
+      <canvas id="graphCanvas" class="graph-canvas"></canvas>
+      <div id="graphNodes" class="graph-nodes"></div>
+    </div>
   </main>
 
   <aside id="historyPanel" class="history-panel hidden" aria-hidden="true">

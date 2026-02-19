@@ -1,3 +1,28 @@
+/* ========== Graph rendering constants ========== */
+
+const GRAPH = {
+  ROW_H: 32,
+  COL_W: 18,
+  PAD_LEFT: 18,
+  DOT_R: 5,
+  LINE_W: 2,
+  COLORS: [
+    "#4078c0", // blue
+    "#e8a030", // orange
+    "#e04080", // pink
+    "#40b060", // green
+    "#8050c0", // purple
+    "#c06040", // brown
+    "#30a0a0"  // teal
+  ]
+};
+
+function graphColor(col) {
+  return GRAPH.COLORS[col % GRAPH.COLORS.length];
+}
+
+/* ========== App state ========== */
+
 const stateRef = {
   value: null,
   selectedSessionId: null,
@@ -5,7 +30,9 @@ const stateRef = {
 };
 
 const elements = {
-  treeRoot: document.querySelector("#treeRoot"),
+  graphContainer: document.querySelector("#graphContainer"),
+  graphCanvas: document.querySelector("#graphCanvas"),
+  graphNodes: document.querySelector("#graphNodes"),
   historyPanel: document.querySelector("#historyPanel"),
   sessionList: document.querySelector("#sessionList"),
   eventsLog: document.querySelector("#eventsLog"),
@@ -24,6 +51,8 @@ const editorState = {
 
 let toastTimer = null;
 let mousePassthroughEnabled = false;
+
+/* ========== Utilities ========== */
 
 function showToast(message, timeoutMs = 1800) {
   elements.toast.textContent = message;
@@ -66,7 +95,7 @@ function isInteractiveTarget(target) {
   }
   return Boolean(
     target.closest(
-      ".node, .title, .qbtn, .history-panel, .title-editor, .session-btn, .events-log, .editor-input, .editor-btn, .drag-bar"
+      ".graph-node, .qbtn, .history-panel, .title-editor, .session-btn, .events-log, .editor-input, .editor-btn, .drag-bar"
     )
   );
 }
@@ -101,6 +130,145 @@ async function syncState() {
   renderTree();
 }
 
+/* ========== Tree → flat rows ========== */
+
+function flattenTree(state) {
+  const rows = [];
+  const root = activeNode(state, state.rootId);
+  if (!root) {
+    return rows;
+  }
+
+  function dfs(node, depth, isLast) {
+    const children = getChildren(state, node);
+    rows.push({
+      node,
+      depth,
+      isLast,
+      hasChildren: children.length > 0
+    });
+    children.forEach((child, i) => {
+      dfs(child, depth + 1, i === children.length - 1);
+    });
+  }
+
+  dfs(root, 0, true);
+  return rows;
+}
+
+/* ========== Canvas graph drawing ========== */
+
+function drawGraphLines(rows) {
+  const canvas = elements.graphCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const maxCol = rows.reduce((m, r) => Math.max(m, r.depth), 0);
+  const canvasW = GRAPH.PAD_LEFT + (maxCol + 1) * GRAPH.COL_W + 20;
+  const canvasH = rows.length * GRAPH.ROW_H;
+
+  canvas.width = canvasW * dpr;
+  canvas.height = canvasH * dpr;
+  canvas.style.width = `${canvasW}px`;
+  canvas.style.height = `${canvasH}px`;
+
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // Compute active columns state for each row
+  const activeCols = new Set();
+  const rowMeta = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const col = row.depth;
+
+    // Snapshot active columns BEFORE processing this row
+    const activeSnapshot = new Set(activeCols);
+
+    // Determine which column gets deactivated at this row
+    let deactivateCol = -1;
+    if (row.isLast && col > 0) {
+      deactivateCol = col - 1;
+    }
+
+    rowMeta.push({
+      col,
+      activeBefore: activeSnapshot,
+      deactivateCol
+    });
+
+    // Update active columns AFTER this row
+    if (row.hasChildren) {
+      activeCols.add(col);
+    }
+    if (row.isLast && col > 0) {
+      activeCols.delete(col - 1);
+    }
+  }
+
+  // Draw lines and dots
+  for (let i = 0; i < rows.length; i++) {
+    const meta = rowMeta[i];
+    const col = meta.col;
+    const dotX = GRAPH.PAD_LEFT + col * GRAPH.COL_W;
+    const dotY = i * GRAPH.ROW_H + GRAPH.ROW_H / 2;
+
+    // Draw vertical continuation lines for all active columns
+    for (const ac of meta.activeBefore) {
+      const lineX = GRAPH.PAD_LEFT + ac * GRAPH.COL_W;
+      const color = graphColor(ac);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = GRAPH.LINE_W;
+      ctx.beginPath();
+
+      if (ac === meta.deactivateCol) {
+        // Line terminates at this row — draw from top to dot center
+        ctx.moveTo(lineX, i * GRAPH.ROW_H);
+        ctx.lineTo(lineX, dotY);
+      } else {
+        // Line passes through — draw full height
+        ctx.moveTo(lineX, i * GRAPH.ROW_H);
+        ctx.lineTo(lineX, (i + 1) * GRAPH.ROW_H);
+      }
+      ctx.stroke();
+    }
+
+    // Draw continuation line below dot if node has children
+    if (rows[i].hasChildren) {
+      const lineX = GRAPH.PAD_LEFT + col * GRAPH.COL_W;
+      ctx.strokeStyle = graphColor(col);
+      ctx.lineWidth = GRAPH.LINE_W;
+      ctx.beginPath();
+      ctx.moveTo(lineX, dotY);
+      ctx.lineTo(lineX, (i + 1) * GRAPH.ROW_H);
+      ctx.stroke();
+    }
+
+    // Draw branch connector from parent column to this column
+    if (col > 0) {
+      const parentCol = col - 1;
+      const parentX = GRAPH.PAD_LEFT + parentCol * GRAPH.COL_W;
+      const childX = dotX;
+      const color = graphColor(col);
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = GRAPH.LINE_W;
+      ctx.beginPath();
+      ctx.moveTo(parentX, i * GRAPH.ROW_H);
+      // Bezier curve: from parent column top → to dot position
+      const cpY1 = i * GRAPH.ROW_H + GRAPH.ROW_H * 0.4;
+      const cpY2 = dotY - GRAPH.ROW_H * 0.1;
+      ctx.bezierCurveTo(parentX, cpY1, childX, cpY2, childX, dotY);
+      ctx.stroke();
+    }
+
+    // Dots are rendered as HTML elements, not on canvas
+  }
+}
+
+/* ========== DOM node creation ========== */
+
 function createQuickButton(text, title, onClick) {
   const button = document.createElement("button");
   button.type = "button";
@@ -114,35 +282,43 @@ function createQuickButton(text, title, onClick) {
   return button;
 }
 
-function createNodeChip(node, isFocused) {
-  const chip = document.createElement("div");
-  chip.className = `node${isFocused ? " focused" : ""}`;
-  chip.tabIndex = 0;
-  chip.dataset.nodeId = node.id;
-  chip.addEventListener("click", () => {
+function createGraphNodeElement(row, rowIndex) {
+  const { node, depth } = row;
+  const isFocused = node.id === stateRef.value?.focusedNodeId;
+  const dotX = GRAPH.PAD_LEFT + depth * GRAPH.COL_W;
+  const dotY = rowIndex * GRAPH.ROW_H + GRAPH.ROW_H / 2;
+
+  const el = document.createElement("div");
+  el.className = `graph-node${isFocused ? " focused" : ""}`;
+  el.dataset.nodeId = node.id;
+  // Position so the dot center (5px from left edge) aligns with canvas line x
+  el.style.left = `${dotX - 5}px`;
+  el.style.top = `${dotY - GRAPH.ROW_H / 2}px`;
+  el.style.color = graphColor(depth);
+
+  el.addEventListener("click", () => {
     void focusNode(node.id);
   });
-  chip.addEventListener("dblclick", () => {
+  el.addEventListener("dblclick", () => {
     void renameNode(node.id);
   });
 
-  const dot = document.createElement("span");
-  dot.className = "dot";
-  dot.setAttribute("aria-hidden", "true");
-  chip.append(dot);
+  // Dot
+  const dot = document.createElement("div");
+  dot.className = "graph-dot";
+  el.append(dot);
 
-  const title = document.createElement("button");
-  title.type = "button";
-  title.className = "title";
+  // Info container (hidden by default, visible on hover)
+  const info = document.createElement("div");
+  info.className = "graph-info";
+
+  const title = document.createElement("span");
+  title.className = "graph-title";
   title.textContent = node.title;
-  title.addEventListener("click", (event) => {
-    event.stopPropagation();
-    void focusNode(node.id);
-  });
-  chip.append(title);
+  info.append(title);
 
   const actions = document.createElement("div");
-  actions.className = "quick-actions";
+  actions.className = "graph-actions";
   actions.append(
     createQuickButton("+", "Add child", () => addChild(node.id)),
     createQuickButton("=", "Add sibling", () => addSibling(node.id)),
@@ -150,47 +326,50 @@ function createNodeChip(node, isFocused) {
   );
   if (node.parentId) {
     actions.append(
-      createQuickButton("V", "Complete and return parent", () => completeNode(node.id)),
-      createQuickButton("x", "Delete and return parent", () => deleteNode(node.id))
+      createQuickButton("V", "Complete", () => completeNode(node.id)),
+      createQuickButton("x", "Delete", () => deleteNode(node.id))
     );
   }
-  chip.append(actions);
-  return chip;
+  info.append(actions);
+  el.append(info);
+
+  return el;
 }
 
-function renderNode(state, node, isRoot = false) {
-  const li = document.createElement("li");
-  li.className = `tree-node${isRoot ? " root" : ""}`;
-  li.dataset.nodeId = node.id;
-  li.append(createNodeChip(node, state.focusedNodeId === node.id));
-
-  const children = getChildren(state, node);
-  if (children.length > 0) {
-    const ul = document.createElement("ul");
-    for (const child of children) {
-      ul.append(renderNode(state, child, false));
-    }
-    li.append(ul);
-  }
-  return li;
-}
+/* ========== Render orchestration ========== */
 
 function renderTree() {
   const state = stateRef.value;
   if (!state) {
     return;
   }
-  elements.treeRoot.innerHTML = "";
   const root = activeNode(state, state.rootId);
   if (!root) {
     showToast("Root missing", 4000);
     return;
   }
-  elements.treeRoot.append(renderNode(state, root, true));
+
+  const rows = flattenTree(state);
+
+  // Draw canvas lines
+  drawGraphLines(rows);
+
+  // Create node elements
+  elements.graphNodes.innerHTML = "";
+  const totalH = rows.length * GRAPH.ROW_H;
+  elements.graphNodes.style.height = `${totalH}px`;
+
+  for (let i = 0; i < rows.length; i++) {
+    elements.graphNodes.append(createGraphNodeElement(rows[i], i));
+  }
+
+  // Re-position title editor if open
   if (isTitleEditorOpen()) {
     positionTitleEditor(editorState.anchorNodeId);
   }
 }
+
+/* ========== Title Editor ========== */
 
 function isTitleEditorOpen() {
   return !elements.titleEditor.classList.contains("hidden");
@@ -205,7 +384,7 @@ function positionTitleEditor(anchorNodeId = null) {
   let left = margin;
   let top = margin;
   if (anchorNodeId) {
-    const anchor = document.querySelector(`.tree-node[data-node-id="${anchorNodeId}"] .node`);
+    const anchor = document.querySelector(`.graph-node[data-node-id="${anchorNodeId}"]`);
     if (anchor) {
       const rect = anchor.getBoundingClientRect();
       left = Math.max(margin, Math.min(rect.left, window.innerWidth - panelWidth - margin));
@@ -290,6 +469,8 @@ function setupTitleEditor() {
     }
   });
 }
+
+/* ========== Tree operations ========== */
 
 async function focusNode(nodeId) {
   stateRef.value = await window.todoApi.tree.focusNode(nodeId);
@@ -376,6 +557,8 @@ async function redo() {
   showToast("Redo");
 }
 
+/* ========== History panel ========== */
+
 function toggleHistory(forceValue = null) {
   stateRef.historyOpen = forceValue ?? !stateRef.historyOpen;
   elements.historyPanel.classList.toggle("hidden", !stateRef.historyOpen);
@@ -424,6 +607,8 @@ async function loadSessions() {
     elements.eventsLog.textContent = "Read error";
   }
 }
+
+/* ========== Keyboard ========== */
 
 function setupKeyboard() {
   document.addEventListener("keydown", (event) => {
@@ -484,6 +669,8 @@ function setupKeyboard() {
   });
 }
 
+/* ========== Mouse passthrough ========== */
+
 function setupMousePassthrough() {
   document.addEventListener("mousemove", (event) => {
     if (isTitleEditorOpen() || stateRef.historyOpen) {
@@ -500,12 +687,16 @@ function setupMousePassthrough() {
   });
 }
 
+/* ========== IPC listeners ========== */
+
 function setupIpcListeners() {
   window.todoApi.onOpenHistory(() => toggleHistory(true));
   window.todoApi.onDockChanged((payload) => {
     document.body.classList.toggle("docked", Boolean(payload?.docked));
   });
 }
+
+/* ========== Drag bar ========== */
 
 function setupDragBar() {
   const dragBar = document.querySelector(".drag-bar");
@@ -566,6 +757,8 @@ function setupDragBar() {
   });
 }
 
+/* ========== Boot ========== */
+
 async function start() {
   await withGuard(async () => {
     await syncState();
@@ -575,7 +768,7 @@ async function start() {
     setupIpcListeners();
     setupDragBar();
     setMousePassthrough(true);
-    showToast("顶部条可拖动窗口；仅悬停节点显示内容", 3200);
+    showToast("hover 节点查看详情；左上角可拖动窗口", 3200);
   });
 }
 

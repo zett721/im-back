@@ -1,12 +1,10 @@
 :root {
-  --line: rgba(241, 248, 255, 0.92);
-  --line-edge: rgba(14, 20, 31, 0.7);
-  --line-strong: rgba(195, 220, 255, 0.98);
-  --node-bg: rgba(18, 23, 34, 0.82);
   --node-fg: rgba(240, 247, 255, 0.94);
   --focus: #53a0ff;
   --panel: rgba(14, 18, 28, 0.88);
   --panel-border: rgba(96, 118, 160, 0.4);
+  --row-hover: rgba(255, 255, 255, 0.06);
+  --row-focus: rgba(83, 160, 255, 0.12);
 }
 
 * {
@@ -27,13 +25,7 @@ body {
   color: var(--node-fg);
 }
 
-.surface {
-  position: absolute;
-  inset: 0;
-  overflow: auto;
-  padding: 30px 10px 14px;
-  -webkit-app-region: no-drag;
-}
+/* ========== Drag Handle ========== */
 
 .drag-bar {
   position: absolute;
@@ -64,133 +56,112 @@ body {
   cursor: grabbing;
 }
 
-.tree-root,
-.tree-root ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
+/* ========== Surface ========== */
 
-.tree-root ul {
-  margin-left: 18px;
-  padding-left: 12px;
-  position: relative;
-}
-
-.tree-root ul::before {
-  content: "";
+.surface {
   position: absolute;
-  left: 5px;
+  inset: 0;
+  overflow: auto;
+  padding: 30px 0 14px;
+  -webkit-app-region: no-drag;
+}
+
+/* ========== Git Graph Layout ========== */
+
+.graph-container {
+  position: relative;
+  min-height: 100%;
+}
+
+.graph-canvas {
+  position: absolute;
   top: 0;
-  bottom: 16px;
-  width: 2px;
-  background: var(--line);
-  box-shadow: 0 0 0 1px var(--line-edge);
-  border-radius: 2px;
+  left: 0;
+  pointer-events: none;
 }
 
-.tree-node {
+.graph-nodes {
   position: relative;
-  margin-top: 6px;
+  pointer-events: none;
 }
 
-.tree-node::before {
-  content: "";
+/* ========== Node Row ========== */
+
+.graph-node {
   position: absolute;
-  left: -12px;
-  top: 18px;
-  width: 12px;
-  height: 2px;
-  background: var(--line);
-  box-shadow: 0 0 0 1px var(--line-edge);
-  border-radius: 2px;
-}
-
-.tree-node.root::before {
-  display: none;
-}
-
-.node {
-  min-height: 24px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0;
-  /* 默认隐藏标题时减少间距 */
-  padding: 2px 8px;
-  margin: 2px 0;
-  /* 增加 hit area */
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: var(--node-bg);
+  height: 28px;
+  pointer-events: auto;
+  cursor: pointer;
   -webkit-app-region: no-drag;
   user-select: none;
-  transition: gap 120ms ease, background 120ms ease;
+  padding: 0 8px 0 0;
+  border-radius: 14px;
+  transition: background 0.12s;
 }
 
-.node:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
+.graph-node:hover {
+  background: var(--row-hover);
 }
 
-.node.focused {
-  border-color: rgba(83, 160, 255, 0.72);
-  box-shadow: 0 0 0 1px rgba(83, 160, 255, 0.25);
+.graph-node.focused {
+  background: var(--row-focus);
 }
 
-.dot {
+/* ========== Dot ========== */
+
+.graph-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid var(--line-strong);
-  background: rgba(16, 21, 32, 0.95);
+  flex-shrink: 0;
+  background: currentColor;
+  transition: transform 0.12s, box-shadow 0.12s;
 }
 
-.node.focused .dot {
-  border-color: var(--focus);
+.graph-node.focused .graph-dot {
+  box-shadow: 0 0 0 3px rgba(83, 160, 255, 0.45);
 }
 
-.title {
-  border: 0;
-  background: transparent;
-  color: var(--node-fg);
-  font-size: 13px;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  text-align: left;
-  white-space: nowrap;
+.graph-node:hover .graph-dot {
+  transform: scale(1.35);
+}
+
+/* ========== Hover Label ========== */
+
+.graph-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   max-width: 0;
   opacity: 0;
   overflow: hidden;
-  transition: max-width 120ms ease, opacity 120ms ease;
-  -webkit-app-region: no-drag;
+  white-space: nowrap;
+  margin-left: 0;
+  transition: max-width 0.15s ease, opacity 0.15s ease, margin-left 0.15s ease;
 }
 
-.title:hover {
-  color: #ffffff;
-}
-
-.node:hover .title,
-.node:focus-within .title {
-  max-width: 220px;
+.graph-node:hover .graph-info {
+  max-width: 400px;
   opacity: 1;
-  margin-left: 6px;
-  /* 展开时增加间距 */
+  margin-left: 8px;
 }
 
-/* 节点悬浮时的整体状态 */
-.node:hover {
-  gap: 6px;
+.graph-title {
+  font-size: 13px;
+  color: #1a1a1a;
 }
 
-.quick-actions {
-  display: none;
+.graph-node:hover .graph-title {
+  color: #000000;
+}
+
+/* ========== Action Buttons ========== */
+
+.graph-actions {
+  display: flex;
   gap: 3px;
-  -webkit-app-region: no-drag;
-}
-
-.node:hover .quick-actions {
-  display: inline-flex;
 }
 
 .qbtn {
@@ -214,6 +185,8 @@ body {
 .qbtn:focus-visible {
   outline: 2px solid var(--focus);
 }
+
+/* ========== History Panel ========== */
 
 .history-panel {
   position: absolute;
@@ -282,6 +255,8 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* ========== Title Editor ========== */
+
 .title-editor {
   position: absolute;
   left: 8px;
@@ -348,6 +323,8 @@ body {
   outline: 2px solid var(--focus);
 }
 
+/* ========== Toast ========== */
+
 .toast {
   position: absolute;
   left: 8px;
@@ -369,8 +346,8 @@ body {
   display: none;
 }
 
-body.docked .title {
+/* ========== Docked ========== */
+
+body.docked .graph-node:hover .graph-info {
   max-width: 62px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
