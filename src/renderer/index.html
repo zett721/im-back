@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Git Tree Todo</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="drag-bar">⠿</div>
+  <main id="surface" class="surface">
+    <ul id="treeRoot" class="tree-root" aria-label="todo tree"></ul>
+  </main>
+
+  <aside id="historyPanel" class="history-panel hidden" aria-hidden="true">
+    <div class="history-head">Session Logs</div>
+    <div id="sessionList" class="session-list"></div>
+    <pre id="eventsLog" class="events-log"></pre>
+  </aside>
+
+  <section id="titleEditor" class="title-editor hidden" aria-hidden="true">
+    <label id="titleEditorLabel" for="titleEditorInput" class="editor-label">Task</label>
+    <input id="titleEditorInput" class="editor-input" maxlength="120" autocomplete="off" />
+    <button id="titleEditorOk" type="button" class="editor-btn ok">OK</button>
+    <button id="titleEditorCancel" type="button" class="editor-btn cancel">Cancel</button>
+  </section>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+
+</html>

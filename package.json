@@ -1,0 +1,15 @@
+{
+  "name": "git-tree-todo",
+  "version": "0.1.0",
+  "description": "Desktop Git-style tree todo app with session archiving.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "test": "node tests/run-tests.js"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1"
+  }
+}
