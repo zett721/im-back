@@ -41,7 +41,10 @@ const elements = {
   titleEditorLabel: document.querySelector("#titleEditorLabel"),
   titleEditorInput: document.querySelector("#titleEditorInput"),
   titleEditorOk: document.querySelector("#titleEditorOk"),
-  titleEditorCancel: document.querySelector("#titleEditorCancel")
+  titleEditorCancel: document.querySelector("#titleEditorCancel"),
+  translatePopup: document.querySelector("#translatePopup"),
+  translateInput: document.querySelector("#translateInput"),
+  translateResult: document.querySelector("#translateResult")
 };
 
 const editorState = {
@@ -95,7 +98,7 @@ function isInteractiveTarget(target) {
   }
   return Boolean(
     target.closest(
-      ".graph-node, .qbtn, .history-panel, .title-editor, .session-btn, .events-log, .editor-input, .editor-btn, .drag-bar"
+      ".graph-node, .qbtn, .history-panel, .title-editor, .session-btn, .events-log, .editor-input, .editor-btn, .drag-bar, .translate-popup"
     )
   );
 }
@@ -548,13 +551,18 @@ async function deleteNode(nodeId = null) {
 async function undo() {
   stateRef.value = await window.todoApi.tree.undo();
   renderTree();
-  showToast("Undo");
+  showToast("撤销");
 }
 
 async function redo() {
   stateRef.value = await window.todoApi.tree.redo();
   renderTree();
-  showToast("Redo");
+  showToast("重做");
+}
+
+async function saveSession() {
+  await window.todoApi.session.save();
+  showToast("✅ 已保存 — 下次启动将继续当前内容", 3000);
 }
 
 /* ========== History panel ========== */
@@ -621,6 +629,14 @@ function setupKeyboard() {
         return;
       }
 
+      if (isTranslateOpen()) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          toggleTranslate(false);
+        }
+        return;
+      }
+
       if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
         await addChild();
@@ -644,6 +660,11 @@ function setupKeyboard() {
       if (event.ctrlKey && event.key.toLowerCase() === "y") {
         event.preventDefault();
         await redo();
+        return;
+      }
+      if (event.ctrlKey && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        await saveSession();
         return;
       }
       if (event.ctrlKey && event.key.toLowerCase() === "h") {
@@ -673,7 +694,7 @@ function setupKeyboard() {
 
 function setupMousePassthrough() {
   document.addEventListener("mousemove", (event) => {
-    if (isTitleEditorOpen() || stateRef.historyOpen) {
+    if (isTitleEditorOpen() || stateRef.historyOpen || isTranslateOpen()) {
       setMousePassthrough(false);
       return;
     }
@@ -690,13 +711,83 @@ function setupMousePassthrough() {
 /* ========== IPC listeners ========== */
 
 function setupIpcListeners() {
-  window.todoApi.onOpenHistory(() => toggleHistory(true));
+  window.todoApi.onOpenHistory(() => toggleHistory());
   window.todoApi.onDockChanged((payload) => {
     document.body.classList.toggle("docked", Boolean(payload?.docked));
   });
 }
 
-/* ========== Drag bar ========== */
+/* ========== Translate ========== */
+
+let translateOpen = false;
+
+function isTranslateOpen() {
+  return translateOpen;
+}
+
+function toggleTranslate(forceValue = null) {
+  translateOpen = forceValue ?? !translateOpen;
+  elements.translatePopup.classList.toggle("hidden", !translateOpen);
+  elements.translatePopup.setAttribute("aria-hidden", translateOpen ? "false" : "true");
+  if (translateOpen) {
+    setMousePassthrough(false);
+    requestAnimationFrame(() => {
+      elements.translateInput.focus();
+      elements.translateInput.select();
+    });
+  } else if (!isTitleEditorOpen() && !stateRef.historyOpen) {
+    setMousePassthrough(true);
+  }
+}
+
+let translateTimer = null;
+
+async function doTranslate() {
+  const word = elements.translateInput.value.trim();
+  if (!word) {
+    elements.translateResult.textContent = "英 ↔ 中";
+    return;
+  }
+  elements.translateResult.textContent = "翻译中...";
+  try {
+    const res = await window.todoApi.translate.lookup(word);
+    if (res.error) {
+      elements.translateResult.textContent = `❌ ${res.error}`;
+    } else {
+      const dir = res.from === "zh" ? "中 → 英" : "英 → 中";
+      elements.translateResult.textContent = `${dir}：${res.result}`;
+    }
+  } catch (err) {
+    elements.translateResult.textContent = `❌ ${err.message}`;
+  }
+}
+
+function setupTranslate() {
+  elements.translateInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (translateTimer) { clearTimeout(translateTimer); translateTimer = null; }
+      void doTranslate();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleTranslate(false);
+    }
+  });
+
+  elements.translateInput.addEventListener("input", () => {
+    if (translateTimer) { clearTimeout(translateTimer); }
+    translateTimer = setTimeout(() => {
+      translateTimer = null;
+      void doTranslate();
+    }, 600);
+  });
+}
+
+/* ========== Drag bar (click = translate, drag = move window) ========== */
 
 function setupDragBar() {
   const dragBar = document.querySelector(".drag-bar");
@@ -704,8 +795,11 @@ function setupDragBar() {
     return;
   }
   let dragging = false;
+  let didMove = false;
   let lastScreenX = 0;
   let lastScreenY = 0;
+  let startScreenX = 0;
+  let startScreenY = 0;
   let pendingDx = 0;
   let pendingDy = 0;
   let rafId = 0;
@@ -724,8 +818,9 @@ function setupDragBar() {
       return;
     }
     dragging = true;
-    lastScreenX = event.screenX;
-    lastScreenY = event.screenY;
+    didMove = false;
+    startScreenX = lastScreenX = event.screenX;
+    startScreenY = lastScreenY = event.screenY;
     pendingDx = 0;
     pendingDy = 0;
     event.preventDefault();
@@ -735,24 +830,37 @@ function setupDragBar() {
     if (!dragging) {
       return;
     }
-    pendingDx += event.screenX - lastScreenX;
-    pendingDy += event.screenY - lastScreenY;
-    lastScreenX = event.screenX;
-    lastScreenY = event.screenY;
-    if (!rafId) {
-      rafId = requestAnimationFrame(flushDrag);
+    const dx = event.screenX - startScreenX;
+    const dy = event.screenY - startScreenY;
+    if (!didMove && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      didMove = true;
+    }
+    if (didMove) {
+      pendingDx += event.screenX - lastScreenX;
+      pendingDy += event.screenY - lastScreenY;
+      lastScreenX = event.screenX;
+      lastScreenY = event.screenY;
+      if (!rafId) {
+        rafId = requestAnimationFrame(flushDrag);
+      }
     }
   });
 
   document.addEventListener("mouseup", () => {
-    if (dragging) {
-      dragging = false;
+    if (!dragging) {
+      return;
+    }
+    dragging = false;
+    if (didMove) {
       if (rafId) {
         cancelAnimationFrame(rafId);
         rafId = 0;
         flushDrag();
       }
       window.todoApi.ui.dragEnd();
+    } else {
+      // Single click — toggle translate popup
+      toggleTranslate();
     }
   });
 }
@@ -767,8 +875,9 @@ async function start() {
     setupMousePassthrough();
     setupIpcListeners();
     setupDragBar();
+    setupTranslate();
     setMousePassthrough(true);
-    showToast("hover 节点查看详情；左上角可拖动窗口", 3200);
+    showToast("单击⠿翻译单词；hover 节点查看任务", 3200);
   });
 }
 

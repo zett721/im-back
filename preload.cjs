@@ -22,10 +22,16 @@ contextBridge.exposeInMainWorld("todoApi", {
     dragMove: (dx, dy) => ipcRenderer.send("ui:drag-move", dx, dy),
     dragEnd: () => ipcRenderer.send("ui:drag-end")
   },
+  translate: {
+    lookup: (word) => ipcRenderer.invoke("translate:lookup", word)
+  },
+  session: {
+    save: () => ipcRenderer.invoke("session:save")
+  },
   onOpenHistory: (callback) => {
     const wrapped = () => callback();
-    ipcRenderer.on("ui:open-history", wrapped);
-    return () => ipcRenderer.off("ui:open-history", wrapped);
+    ipcRenderer.on("ui:toggle-history", wrapped);
+    return () => ipcRenderer.off("ui:toggle-history", wrapped);
   },
   onDockChanged: (callback) => {
     const wrapped = (_event, payload) => callback(payload);

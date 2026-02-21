@@ -139,22 +139,33 @@ body {
   overflow: hidden;
   white-space: nowrap;
   margin-left: 0;
-  transition: max-width 0.15s ease, opacity 0.15s ease, margin-left 0.15s ease;
+  transition: max-width 0.18s ease, opacity 0.18s ease, margin-left 0.18s ease;
+  /* pill background — always readable regardless of desktop bg */
+  background: rgba(16, 22, 36, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
 .graph-node:hover .graph-info {
-  max-width: 400px;
+  max-width: 480px;
   opacity: 1;
   margin-left: 8px;
+  padding: 2px 10px 2px 8px;
 }
 
 .graph-title {
   font-size: 13px;
-  color: #1a1a1a;
+  font-weight: 500;
+  color: rgba(230, 240, 255, 0.95);
+  letter-spacing: 0.01em;
 }
 
 .graph-node:hover .graph-title {
-  color: #000000;
+  color: #ffffff;
 }
 
 /* ========== Action Buttons ========== */
@@ -321,6 +332,57 @@ body {
 
 .editor-btn:focus-visible {
   outline: 2px solid var(--focus);
+}
+
+/* ========== Translate Popup ========== */
+
+.translate-popup {
+  position: absolute;
+  top: 30px;
+  left: 4px;
+  width: 240px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(18, 24, 36, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 90;
+  -webkit-app-region: no-drag;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.translate-popup.hidden {
+  display: none;
+}
+
+.translate-input {
+  min-height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 149, 196, 0.5);
+  background: rgba(11, 15, 24, 0.95);
+  color: rgba(232, 241, 255, 0.96);
+  padding: 0 10px;
+  font-size: 13px;
+  -webkit-app-region: no-drag;
+}
+
+.translate-input:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.translate-result {
+  font-size: 13px;
+  color: rgba(220, 232, 255, 0.9);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(30, 40, 60, 0.6);
+  min-height: 24px;
+  word-break: break-all;
+  line-height: 1.5;
+  -webkit-app-region: no-drag;
+  user-select: text;
 }
 
 /* ========== Toast ========== */

@@ -24,6 +24,7 @@ export class SessionStore {
   constructor(baseDir) {
     this.baseDir = baseDir;
     this.activePath = path.join(baseDir, "active.json");
+    this.continueFlagPath = path.join(baseDir, "continue.flag");
     this.eventsPath = null;
     this.pendingState = null;
     this.flushTimer = null;
@@ -37,6 +38,31 @@ export class SessionStore {
 
   async ensureDir() {
     await fs.mkdir(this.baseDir, { recursive: true });
+  }
+
+  /** 检查是否有"继续上次"标志 */
+  async hasContinueFlag() {
+    try {
+      await fs.access(this.continueFlagPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 写入标志：下次启动恢复当前会话 */
+  async markContinue() {
+    await this.ensureDir();
+    await fs.writeFile(this.continueFlagPath, "1", "utf8");
+  }
+
+  /** 清除标志：下次启动开新会话 */
+  async clearContinue() {
+    try {
+      await fs.rm(this.continueFlagPath, { force: true });
+    } catch {
+      // ignore
+    }
   }
 
   async archivePreviousActive() {
@@ -63,8 +89,40 @@ export class SessionStore {
     }
   }
 
+  /** 恢复 active.json 中的会话（continue 模式） */
+  async restoreSession() {
+    await this.ensureDir();
+    // 清除标志——下次启动默认是新会话，除非用户再次保存
+    await this.clearContinue();
+
+    const raw = await fs.readFile(this.activePath, "utf8");
+    const state = JSON.parse(raw);
+    this.sessionId = state.sessionId;
+
+    // 复用原有的 events log
+    this.eventsPath = path.join(this.baseDir, `${this.sessionId}.events.log`);
+
+    await this.appendEvent("SESSION_RESUME", {
+      nodeId: state.rootId,
+      parentId: "none",
+      title: "Resumed session"
+    });
+    return state;
+  }
+
   async initSession() {
     await this.ensureDir();
+
+    // 如果有继续标志，恢复上次状态
+    if (await this.hasContinueFlag()) {
+      try {
+        return await this.restoreSession();
+      } catch (err) {
+        console.warn("Failed to restore session, starting fresh:", err.message);
+        // 恢复失败则正常初始化
+      }
+    }
+
     await this.archivePreviousActive();
 
     const baseSessionId = SessionStore.createSessionId();

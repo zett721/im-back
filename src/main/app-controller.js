@@ -170,6 +170,19 @@ export class AppController {
     return this.enqueue(async () => this.store.readEvents(sessionId));
   }
 
+  async saveSession() {
+    return this.enqueue(async () => {
+      // Flush pending writes first so active.json is up-to-date
+      await this.store.flushPendingState();
+      await this.store.markContinue();
+      await this.store.appendEvent("SESSION_SAVE", {
+        nodeId: this.machine.getState().rootId,
+        parentId: "none",
+        title: "User saved session"
+      });
+    });
+  }
+
   async shutdown() {
     await this.enqueue(async () => this.store.flushPendingState());
   }

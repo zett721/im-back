@@ -1,15 +1,45 @@
 {
-  "name": "git-tree-todo",
-  "version": "0.1.0",
-  "description": "Desktop Git-style tree todo app with session archiving.",
+  "name": "im-back",
+  "productName": "I'm back",
+  "version": "1.0.0",
+  "description": "A desktop Git-style task tree app. Complete a task and get back to the parent — just like returning from a function call.",
+  "author": "your-name",
   "main": "main.js",
   "type": "module",
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "test": "node tests/run-tests.js"
+    "test": "node tests/run-tests.js",
+    "dist": "electron-builder --win --x64",
+    "dist:dir": "electron-builder --win --x64 --dir"
+  },
+  "build": {
+    "appId": "com.yourname.im-back",
+    "productName": "I'm back",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "files": [
+      "main.js",
+      "preload.cjs",
+      "src/**/*",
+      "icon.png",
+      "icon.ico",
+      "package.json"
+    ]
   },
   "devDependencies": {
-    "electron": "^33.2.1"
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
   }
 }

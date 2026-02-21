@@ -1,56 +1,82 @@
-# Git Tree Todo
+# I'm back
 
-Desktop todo tool with a Git-style node tree and function-like "return to parent" workflow.
+桌面 Git Graph 风格任务树工具 — 完成一个任务就"返回"父任务，像函数调用一样管理你的工作流。
 
-## Features
+## 功能
 
-- Top-down node graph with connectors (Git-style branch readability).
-- Complete/Delete current task -> focus automatically returns to parent.
-- Minimal desktop overlay UI: only nodes and connecting lines.
-- Edge docking: drag window to left/right edge to auto-snap and shrink.
-- Session archive model:
-  - During runtime, writes a continuous event log.
-  - On next app start, previous `active.json` is snapshotted and a new tree starts.
-- Soft delete + Undo/Redo.
-- Tray controls: show/hide, always-on-top toggle, open history, quit.
+- 纵向 Git Graph 风格节点图，彩色分支线连接。
+- 完成 / 删除当前任务 → 焦点自动回到父节点。
+- 极简桌面挂件：默认只显示节点圆点，鼠标悬停才展开任务名。
+- 透明区域鼠标穿透到桌面，不影响其他操作。
+- 边缘吸附：拖到屏幕左/右边缘自动贴靠并缩窄。
+- 单击左上角拖拽按钮可打开单词翻译（英中互译）。
+- 会话归档：
+  - 运行时持续写入事件日志。
+  - 下次启动时，上一次的状态自动快照归档，开始新会话。
+- 软删除 + 撤销/重做。
+- 托盘菜单：显示/隐藏、置顶切换、查看历史、退出。
 
-## Run
+## 运行（开发模式）
 
 ```bash
 npm install
 npm run start
 ```
 
-## Test
+或者双击 `start.vbs` 直接启动（无终端窗口）。
+
+## 打包成 exe（Windows 安装包）
+
+```bash
+npm run dist
+```
+
+打包完成后安装包在 `dist/` 目录，双击 `.exe` 即可安装到电脑使用。
+
+> **图标说明**：Windows 安装包图标需要 `.ico` 格式。  
+> 把你的 `icon.png` 用在线工具（如 [cloudconvert.com](https://cloudconvert.com/png-to-ico)）转成 `icon.ico`，  
+> 两个文件都放项目根目录即可。没有 `icon.ico` 时会用默认图标，打包不会报错。
+
+## 测试
 
 ```bash
 npm run test
 ```
 
-## Data layout
+## 数据存储
 
-Stored under Electron `userData/sessions`:
+存储在 Electron `userData/sessions` 目录下：
 
-- `active.json`
-- `YYYY-MM-DD_HH-mm-ss.events.log`
-- `YYYY-MM-DD_HH-mm-ss.snapshot.json`
+- `active.json` — 当前活跃状态
+- `YYYY-MM-DD_HH-mm-ss.events.log` — 事件日志
+- `YYYY-MM-DD_HH-mm-ss.snapshot.json` — 历史快照
 
-## Shortcuts
+## 快捷键
 
-- `Ctrl+N`: add child
-- `Ctrl+Shift+N`: add sibling
-- `Enter`: rename focused node
-- `Ctrl+Enter`: complete focused node (return to parent)
-- `Delete`: delete focused node (return to parent)
-- `Ctrl+Z / Ctrl+Y`: undo / redo
-- `Ctrl+H`: toggle history panel
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+N` | 添加子任务 |
+| `Ctrl+Shift+N` | 添加兄弟任务 |
+| `Enter` | 重命名当前节点 |
+| `Ctrl+Enter` | 完成当前节点（返回父节点） |
+| `Delete` | 删除当前节点（返回父节点） |
+| `Ctrl+Z` / `Ctrl+Y` | 撤销 / 重做 |
+| `Ctrl+S` | **保存当前内容**（下次启动继续） |
+| `Ctrl+H` | 切换历史面板 |
 
-## Input behavior
+## 输入方式
 
-- Press `+`, `=` or shortcut keys, then type task name in the small floating input near the focused node.
-- `Enter` confirms, `Esc` cancels.
+- 按下 `+`、`=` 或使用快捷键后，在浮动输入框中输入任务名。
+- `Enter` 确认，`Esc` 取消。
 
-## Mouse passthrough
+## 鼠标穿透
 
-- Transparent empty area now passes mouse to desktop.
-- Hover node/editor/history area to interact with the app.
+- 透明空白区域的点击会穿透到桌面。
+- 鼠标悬停到节点 / 编辑器 / 历史面板区域才会响应操作。
+
+## 单词翻译
+
+- 单击左上角 ⠿ 按钮打开翻译框。
+- 输入英文自动翻译为中文，输入中文自动翻译为英文。
+- 按 `Enter` 或等待自动翻译。
+- 再次单击按钮或按 `Esc` 关闭。

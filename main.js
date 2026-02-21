@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, screen } from "electron";
 import { AppController } from "./src/main/app-controller.js";
 
@@ -25,6 +26,13 @@ const DOCKED_WIDTH = 168;
 const SNAP_THRESHOLD = 20;
 const UNDOCK_THRESHOLD = 80;
 
+// Load icon from icon.png in project root.
+// Put your own icon.png there — falls back to empty if missing.
+const ICON_PATH = path.join(__dirname, "icon.png");
+const APP_ICON = existsSync(ICON_PATH)
+  ? nativeImage.createFromPath(ICON_PATH)
+  : nativeImage.createEmpty();
+
 async function createController() {
   controller = await AppController.create(app.getPath("userData"));
 }
@@ -46,7 +54,8 @@ function createWindow() {
     fullscreenable: false,
     maximizable: false,
     minimizable: true,
-    title: "Git Tree Todo",
+    title: "I'm back",
+    icon: APP_ICON, // Set taskbar icon
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -154,15 +163,12 @@ function createTray() {
   if (tray) {
     return;
   }
-  const trayImage = nativeImage.createFromDataURL(
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAQAAAC1QeVaAAAAQ0lEQVR4AWP4//8/Azbw////RwYgM4NQExkYGBhMGAwMDP4zMDDAqAaSqQJqGEuMFGKgAqrGQEQ0xCIYEOJsAFDBQ4JkAAAX8RgjI3Q2FQAAAABJRU5ErkJggg=="
-  );
-  tray = new Tray(trayImage);
-  tray.setToolTip("Git Tree Todo");
+  tray = new Tray(APP_ICON); // Use the same icon for tray
+  tray.setToolTip("I'm back");
 
   const template = [
     {
-      label: "Show / Hide",
+      label: "显示 / 隐藏主窗口",
       click: () => {
         if (!mainWindow) {
           return;
@@ -177,7 +183,7 @@ function createTray() {
       }
     },
     {
-      label: "Toggle Always On Top",
+      label: "置顶 / 取消置顶",
       click: () => {
         if (!mainWindow) {
           return;
@@ -187,7 +193,7 @@ function createTray() {
       }
     },
     {
-      label: "Toggle Dock",
+      label: "贴边 / 还原 (吸附)",
       click: () => {
         if (!mainWindow) {
           return;
@@ -202,19 +208,28 @@ function createTray() {
       }
     },
     {
-      label: "Open History",
+      label: "显示 / 隐藏历史记录",
       click: () => {
         if (!mainWindow) {
           return;
         }
         mainWindow.setIgnoreMouseEvents(false);
         mainWindow.show();
-        mainWindow.webContents.send("ui:open-history");
+        mainWindow.webContents.send("ui:toggle-history");
+      }
+    },
+    {
+      label: "💾 保存当前内容（下次继续）",
+      click: async () => {
+        if (!controller) {
+          return;
+        }
+        await controller.saveSession();
       }
     },
     { type: "separator" },
     {
-      label: "Quit",
+      label: "退出",
       click: async () => {
         isQuitting = true;
         if (controller) {
@@ -226,6 +241,7 @@ function createTray() {
   ];
 
   tray.setContextMenu(Menu.buildFromTemplate(template));
+
   tray.on("double-click", () => {
     if (!mainWindow) {
       return;
@@ -248,6 +264,7 @@ function setupIpc() {
   ipcMain.handle("tree:redo", async () => controller.redo());
   ipcMain.handle("archive:listSessions", async () => controller.listSessions());
   ipcMain.handle("archive:readEvents", async (_event, sessionId) => controller.readEvents(sessionId));
+  ipcMain.handle("session:save", async () => controller.saveSession());
   ipcMain.handle("ui:start-drag", async () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       return [0, 0];
@@ -277,10 +294,33 @@ function setupIpc() {
     }
     mainWindow.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
   });
+
+  ipcMain.handle("translate:lookup", async (_event, word) => {
+    const trimmed = (word ?? "").trim();
+    if (!trimmed) {
+      return { error: "空输入" };
+    }
+    const hasChinese = /[\u4e00-\u9fff]/.test(trimmed);
+    const langPair = hasChinese ? "zh-CN|en" : "en|zh-CN";
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(trimmed)}&langpair=${langPair}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.responseStatus === 200 && data.responseData) {
+        return {
+          result: data.responseData.translatedText,
+          from: hasChinese ? "zh" : "en"
+        };
+      }
+      return { error: "翻译失败" };
+    } catch (err) {
+      return { error: err.message || "网络错误" };
+    }
+  });
 }
 
 app.whenReady().then(async () => {
-  await createController();
+  await createController(); // sets controller
   createWindow();
   createTray();
   setupIpc();
