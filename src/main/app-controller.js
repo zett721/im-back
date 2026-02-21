@@ -47,7 +47,6 @@ export class AppController {
 
   async addSibling(nodeId, title) {
     return this.enqueue(async () => {
-      const previous = this.machine.getState().nodes[nodeId];
       const result = this.machine.addSibling(nodeId, title);
       const state = result.state;
       const node = state.nodes[result.nodeId];
@@ -55,7 +54,7 @@ export class AppController {
         nodeId: node.id,
         parentId: node.parentId,
         title: node.title,
-        extra: `from=${previous?.id ?? "none"}`
+        extra: `from=${nodeId}`
       });
       this.schedulePersist();
       return state;
@@ -95,17 +94,11 @@ export class AppController {
       const before = this.machine.getState();
       const node = before.nodes[nodeId];
       const result = this.machine.completeNode(nodeId);
-      const state = result.state;
       await this.store.appendEvent("COMPLETE_NODE", {
         nodeId,
         parentId: node?.parentId ?? "none",
         title: node?.title ?? "",
         extra: `nextFocus=${result.nextFocusId}`
-      });
-      await this.store.appendEvent("RETURN_PARENT", {
-        nodeId: result.nextFocusId,
-        parentId: state.nodes[result.nextFocusId]?.parentId ?? "none",
-        title: state.nodes[result.nextFocusId]?.title ?? ""
       });
       this.schedulePersist();
       return result;
@@ -117,17 +110,11 @@ export class AppController {
       const before = this.machine.getState();
       const node = before.nodes[nodeId];
       const result = this.machine.deleteNode(nodeId);
-      const state = result.state;
       await this.store.appendEvent("DELETE_NODE", {
         nodeId,
         parentId: node?.parentId ?? "none",
         title: node?.title ?? "",
         extra: `nextFocus=${result.nextFocusId}`
-      });
-      await this.store.appendEvent("RETURN_PARENT", {
-        nodeId: result.nextFocusId,
-        parentId: state.nodes[result.nextFocusId]?.parentId ?? "none",
-        title: state.nodes[result.nextFocusId]?.title ?? ""
       });
       this.schedulePersist();
       return result;
@@ -183,7 +170,29 @@ export class AppController {
     });
   }
 
+  async listSnapshots() {
+    return this.enqueue(async () => this.store.listSnapshots());
+  }
+
+  async readSnapshot(snapshotId) {
+    return this.enqueue(async () => this.store.readSnapshot(snapshotId));
+  }
+
+  /**
+   * 从历史快照恢复：flush 当前状态 → 调用 store 恢复 → 重新初始化状态机。
+   * 返回新的完整 state 供渲染层直接使用。
+   */
+  async restoreSession(snapshotId) {
+    return this.enqueue(async () => {
+      await this.store.flushPendingState();
+      const restoredState = await this.store.restoreToSnapshot(snapshotId);
+      this.machine = new TreeStateMachine(restoredState);
+      return restoredState;
+    });
+  }
+
   async shutdown() {
     await this.enqueue(async () => this.store.flushPendingState());
   }
 }
+

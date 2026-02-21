@@ -3,7 +3,7 @@
   "productName": "I'm back",
   "version": "1.0.0",
   "description": "A desktop Git-style task tree app. Complete a task and get back to the parent — just like returning from a function call.",
-  "author": "your-name",
+  "author": "zett",
   "main": "main.js",
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
     "dist:dir": "electron-builder --win --x64 --dir"
   },
   "build": {
-    "appId": "com.yourname.im-back",
+    "appId": "com.zett.im-back",
     "productName": "I'm back",
     "directories": {
       "output": "dist"

@@ -14,11 +14,12 @@ contextBridge.exposeInMainWorld("todoApi", {
   },
   archive: {
     listSessions: () => ipcRenderer.invoke("archive:listSessions"),
-    readEvents: (sessionId) => ipcRenderer.invoke("archive:readEvents", sessionId)
+    readEvents: (sessionId) => ipcRenderer.invoke("archive:readEvents", sessionId),
+    listSnapshots: () => ipcRenderer.invoke("archive:listSnapshots"),
+    readSnapshot: (snapshotId) => ipcRenderer.invoke("archive:readSnapshot", snapshotId)
   },
   ui: {
     setIgnoreMouseEvents: (ignore) => ipcRenderer.send("ui:set-ignore-mouse-events", ignore),
-    startDrag: () => ipcRenderer.invoke("ui:start-drag"),
     dragMove: (dx, dy) => ipcRenderer.send("ui:drag-move", dx, dy),
     dragEnd: () => ipcRenderer.send("ui:drag-end")
   },
@@ -26,8 +27,10 @@ contextBridge.exposeInMainWorld("todoApi", {
     lookup: (word) => ipcRenderer.invoke("translate:lookup", word)
   },
   session: {
-    save: () => ipcRenderer.invoke("session:save")
+    save: () => ipcRenderer.invoke("session:save"),
+    restore: (snapshotId) => ipcRenderer.invoke("session:restore", snapshotId)
   },
+
   onOpenHistory: (callback) => {
     const wrapped = () => callback();
     ipcRenderer.on("ui:toggle-history", wrapped);

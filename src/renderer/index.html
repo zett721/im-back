@@ -19,9 +19,11 @@
   </main>
 
   <aside id="historyPanel" class="history-panel hidden" aria-hidden="true">
-    <div class="history-head">Session Logs</div>
-    <div id="sessionList" class="session-list"></div>
-    <pre id="eventsLog" class="events-log"></pre>
+    <div class="history-head">
+      <span class="history-title">历史记录</span>
+      <button id="historyClose" type="button" class="history-close-btn" title="关闭">✕</button>
+    </div>
+    <div id="snapshotList" class="snapshot-list"></div>
   </aside>
 
   <section id="titleEditor" class="title-editor hidden" aria-hidden="true">

@@ -203,17 +203,17 @@ body {
   position: absolute;
   right: 8px;
   top: 8px;
-  width: min(360px, calc(100% - 16px));
+  width: min(320px, calc(100% - 16px));
   max-height: calc(100% - 16px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 12px;
+  gap: 0;
+  border-radius: 14px;
   border: 1px solid var(--panel-border);
   background: var(--panel);
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   z-index: 10;
   -webkit-app-region: no-drag;
 }
@@ -223,47 +223,197 @@ body {
 }
 
 .history-head {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  opacity: 0.8;
-}
-
-.session-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgba(96, 118, 160, 0.25);
+  flex-shrink: 0;
 }
 
-.session-btn {
-  border: 1px solid rgba(119, 140, 177, 0.4);
-  border-radius: 999px;
-  background: rgba(27, 35, 52, 0.9);
-  color: rgba(220, 232, 255, 0.9);
+.history-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(200, 220, 255, 0.85);
+  text-transform: uppercase;
+}
+
+.history-close-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(200, 220, 255, 0.7);
   font-size: 11px;
-  min-height: 28px;
-  padding: 0 10px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
   -webkit-app-region: no-drag;
 }
 
-.session-btn.active {
-  border-color: rgba(82, 163, 255, 0.92);
+.history-close-btn:hover {
+  background: rgba(255, 80, 80, 0.25);
+  color: #ff7070;
 }
 
-.events-log {
-  margin: 0;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(112, 131, 166, 0.4);
-  background: rgba(17, 22, 32, 0.9);
-  color: rgba(213, 229, 255, 0.92);
+/* Scrollable cards area */
+.snapshot-list {
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  -webkit-app-region: no-drag;
+}
+
+.snapshot-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.snapshot-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.snapshot-list::-webkit-scrollbar-thumb {
+  background: rgba(120, 150, 210, 0.3);
+  border-radius: 99px;
+}
+
+/* Individual session card */
+.snapshot-card {
+  border-radius: 10px;
+  border: 1px solid rgba(100, 125, 170, 0.28);
+  background: rgba(20, 27, 44, 0.75);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.snapshot-card:hover {
+  border-color: rgba(83, 160, 255, 0.45);
+}
+
+.snapshot-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(96, 118, 160, 0.18);
+  flex-wrap: nowrap;
+}
+
+.snapshot-date {
   font-size: 11px;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  overflow: auto;
-  min-height: 140px;
-  max-height: 320px;
+  font-weight: 600;
+  color: rgba(160, 195, 255, 0.9);
+  letter-spacing: 0.02em;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snapshot-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  border: 1px solid rgba(96, 118, 160, 0.35);
+  background: rgba(36, 48, 76, 0.8);
+  color: rgba(170, 200, 255, 0.7);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Mini task tree inside card */
+.snapshot-tree {
+  padding: 6px 10px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.snapshot-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: rgba(210, 228, 255, 0.85);
+  line-height: 1.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snapshot-tree-indent {
+  color: rgba(100, 130, 180, 0.5);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.snapshot-tree-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+.snapshot-tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snapshot-empty {
+  font-size: 11px;
+  color: rgba(150, 170, 210, 0.5);
+  padding: 4px 10px 6px;
+  font-style: italic;
+}
+
+.snapshot-overflow {
+  font-size: 10px;
+  color: rgba(130, 160, 200, 0.55);
+  padding: 0 10px 4px;
+}
+
+/* Restore button — compact inline pill for the header row */
+.snapshot-restore-btn {
+  font-size: 10px;
+  padding: 2px 9px;
+  border-radius: 99px;
+  border: 1px solid rgba(83, 160, 255, 0.4);
+  background: rgba(26, 70, 150, 0.55);
+  color: rgba(160, 210, 255, 0.95);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
   -webkit-app-region: no-drag;
+}
+
+.snapshot-restore-btn:hover {
+  background: rgba(40, 100, 210, 0.75);
+  border-color: rgba(83, 160, 255, 0.75);
+  color: #fff;
+}
+
+.snapshot-restore-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Empty state */
+.snapshot-no-history {
+  text-align: center;
+  padding: 24px 12px;
+  font-size: 12px;
+  color: rgba(150, 175, 215, 0.5);
+  line-height: 1.6;
 }
 
 /* ========== Title Editor ========== */
