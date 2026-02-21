@@ -240,4 +240,61 @@ export class SessionStore {
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
   }
+
+  /** 列出所有可恢复的历史快照（.snapshot.json），最新在前 */
+  async listSnapshots() {
+    await this.ensureDir();
+    const entries = await fs.readdir(this.baseDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".snapshot.json"))
+      .map((entry) => entry.name.replace(".snapshot.json", ""))
+      .sort((a, b) => b.localeCompare(a));
+  }
+
+  /** 读取指定快照的完整 state 对象 */
+  async readSnapshot(sessionId) {
+    const snapshotPath = path.join(this.baseDir, `${sessionId}.snapshot.json`);
+    const raw = await fs.readFile(snapshotPath, "utf8");
+    return JSON.parse(raw);
+  }
+
+  /**
+   * 把指定历史快照加载为新的活跃会话。
+   * 流程：归档当前 active.json → 以快照内容写入新 active.json → 新建 session ID。
+   * 返回新的 state 对象。
+   */
+  async restoreToSnapshot(snapshotId) {
+    // 1. 归档当前活跃状态（flush 已在 controller 层完成）
+    await this.archivePreviousActive();
+    await this.clearContinue();
+
+    // 2. 读取目标快照
+    const snapshotState = await this.readSnapshot(snapshotId);
+
+    // 3. 生成新 session ID，避免与旧 events.log 冲突
+    const newSessionId = SessionStore.createSessionId();
+    this.sessionId = newSessionId;
+    this.eventsPath = path.join(this.baseDir, `${newSessionId}.events.log`);
+
+    // 4. 构建恢复状态：复用节点树，但重置 session 元数据与 undo 栈
+    const restoredState = {
+      sessionId: newSessionId,
+      rootId: snapshotState.rootId,
+      focusedNodeId: snapshotState.rootId,
+      nodes: snapshotState.nodes,
+      undoStack: [],
+      redoStack: []
+    };
+
+    // 5. 写入磁盘并记录日志
+    await this.writeStateNow(restoredState);
+    await this.appendEvent("SESSION_RESTORED_FROM", {
+      nodeId: restoredState.rootId,
+      parentId: "none",
+      title: `Restored from ${snapshotId}`
+    });
+
+    return restoredState;
+  }
 }
+

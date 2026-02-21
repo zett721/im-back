@@ -1,82 +1,161 @@
-# I'm back
+# I'm back 🌿
 
-桌面 Git Graph 风格任务树工具 — 完成一个任务就"返回"父任务，像函数调用一样管理你的工作流。
+> **[中文](README.zh.md)** | English
 
-## 功能
+> A desktop task-tree widget that works like a call stack — complete a task and **return** to its parent, just like a function returning to its caller.
 
-- 纵向 Git Graph 风格节点图，彩色分支线连接。
-- 完成 / 删除当前任务 → 焦点自动回到父节点。
-- 极简桌面挂件：默认只显示节点圆点，鼠标悬停才展开任务名。
-- 透明区域鼠标穿透到桌面，不影响其他操作。
-- 边缘吸附：拖到屏幕左/右边缘自动贴靠并缩窄。
-- 单击左上角拖拽按钮可打开单词翻译（英中互译）。
-- 会话归档：
-  - 运行时持续写入事件日志。
-  - 下次启动时，上一次的状态自动快照归档，开始新会话。
-- 软删除 + 撤销/重做。
-- 托盘菜单：显示/隐藏、置顶切换、查看历史、退出。
 
-## 运行（开发模式）
+![Platform](https://img.shields.io/badge/platform-Windows-blue)
+![Electron](https://img.shields.io/badge/electron-33-47848f?logo=electron)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+---
+
+## What is this?
+
+**I'm back** is a minimal, always-on-top desktop widget for managing hierarchical tasks. It renders your task tree in a Git Graph style — a vertical trunk with coloured branch lines — and keeps you focused on *one node at a time*.
+
+The core idea: instead of a flat to-do list, tasks form a **tree**. When you finish a task, focus automatically moves back up to the parent. Like a call stack popping a frame.
+
+![screenshot](Forshow.png)
+
+---
+
+## Features
+
+- **Git Graph visualisation** — vertical trunk, coloured branch lines drawn on Canvas.
+- **Call-stack focus model** — complete or delete a task → focus returns to parent automatically.
+- **Minimal widget UX** — only dots are visible by default; hover a node to reveal its title and action buttons.
+- **Mouse passthrough** — transparent areas let clicks fall through to the desktop beneath.
+- **Edge snapping** — drag the window to the left or right screen edge to auto-dock and collapse.
+- **Click-to-translate** — click the drag handle (⠿) to open an inline EN ↔ ZH dictionary powered by MyMemory.
+- **Session persistence** — press `Ctrl+S` to save; next launch resumes exactly where you left off.
+- **Session history** — every session is auto-archived as a snapshot. Open the history panel (`Ctrl+H`) to browse past sessions as visual cards and **restore any of them** with one click.
+- **Soft delete + undo/redo** — up to 200 steps of full-snapshot undo history.
+- **System tray** — show/hide, always-on-top toggle, history viewer (`Ctrl+H`), save (`Ctrl+S`), and quit.
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18+
+- Windows (mouse-passthrough and edge-snapping are Windows-specific; other features work cross-platform)
+
+### Run in development
 
 ```bash
+git clone https://github.com/zett721/im-back
+cd im-back
 npm install
-npm run start
+npm start
 ```
 
-或者双击 `start.vbs` 直接启动（无终端窗口）。
+Or double-click `start.vbs` on Windows to launch without a terminal window.
 
-## 打包成 exe（Windows 安装包）
+### Build an installer (Windows)
 
 ```bash
 npm run dist
 ```
 
-打包完成后安装包在 `dist/` 目录，双击 `.exe` 即可安装到电脑使用。
+The `.exe` installer will appear in the `dist/` folder.
 
-> **图标说明**：Windows 安装包图标需要 `.ico` 格式。  
-> 把你的 `icon.png` 用在线工具（如 [cloudconvert.com](https://cloudconvert.com/png-to-ico)）转成 `icon.ico`，  
-> 两个文件都放项目根目录即可。没有 `icon.ico` 时会用默认图标，打包不会报错。
+> **Icon note:** For a custom installer icon, place an `icon.ico` alongside `icon.png` in the project root.  
+> Convert with any tool (e.g. [cloudconvert.com](https://cloudconvert.com/png-to-ico)). If `icon.ico` is missing, the build still succeeds with the default icon.
 
-## 测试
+---
 
-```bash
-npm run test
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+N` | Add child task |
+| `Ctrl+Shift+N` | Add sibling task |
+| `Enter` | Rename focused node |
+| `Ctrl+Enter` | **Complete** focused node (return to parent) |
+| `Delete` | **Delete** focused node (return to parent) |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / Redo |
+| `Ctrl+S` | Save session (resume on next launch) |
+| `Ctrl+H` | Toggle history panel |
+| `Esc` | Close input / history / translate |
+
+---
+
+## Project Structure
+
+```
+im-back/
+├── main.js                  # Electron main process (window, tray, IPC)
+├── preload.cjs              # Context-bridge: exposes safe APIs to renderer
+├── src/
+│   ├── main/
+│   │   ├── app-controller.js   # Facade: serialises all operations via a Promise queue
+│   │   ├── tree-state.js       # Core state machine (tree CRUD + undo/redo)
+│   │   └── session-store.js    # Persistence (active.json, event log, snapshots)
+│   └── renderer/
+│       ├── index.html
+│       ├── app.js              # All UI logic + Canvas graph rendering
+│       └── styles.css
+└── tests/
+    └── run-tests.js
 ```
 
-## 数据存储
+### Architecture overview
 
-存储在 Electron `userData/sessions` 目录下：
+```
+User input (keyboard / click)
+        │
+        ▼
+renderer/app.js  ──IPC──►  AppController.enqueue()
+                                    │
+                                    ▼
+                           TreeStateMachine       ← in-memory state + undo stack
+                                    │
+                                    ▼
+                           SessionStore           ← event log + debounced active.json
+```
 
-- `active.json` — 当前活跃状态
-- `YYYY-MM-DD_HH-mm-ss.events.log` — 事件日志
-- `YYYY-MM-DD_HH-mm-ss.snapshot.json` — 历史快照
+Every mutating operation is:
+1. Applied to the in-memory `TreeStateMachine` (instant).
+2. Appended to a plain-text event log (audit trail).
+3. Scheduled to flush to `active.json` after a 250 ms debounce (atomic write via temp-file rename).
 
-## 快捷键
+---
 
-| 快捷键 | 功能 |
-|--------|------|
-| `Ctrl+N` | 添加子任务 |
-| `Ctrl+Shift+N` | 添加兄弟任务 |
-| `Enter` | 重命名当前节点 |
-| `Ctrl+Enter` | 完成当前节点（返回父节点） |
-| `Delete` | 删除当前节点（返回父节点） |
-| `Ctrl+Z` / `Ctrl+Y` | 撤销 / 重做 |
-| `Ctrl+S` | **保存当前内容**（下次启动继续） |
-| `Ctrl+H` | 切换历史面板 |
+## Data Storage
 
-## 输入方式
+All data lives in the Electron `userData` directory (e.g. `%APPDATA%\im-back\sessions\` on Windows):
 
-- 按下 `+`、`=` 或使用快捷键后，在浮动输入框中输入任务名。
-- `Enter` 确认，`Esc` 取消。
+| File | Description |
+|---|---|
+| `active.json` | Current live session state |
+| `continue.flag` | Presence of this file tells next launch to resume |
+| `YYYY-MM-DD_HH-mm-ss.events.log` | Human-readable event log for each session |
+| `YYYY-MM-DD_HH-mm-ss.snapshot.json` | Auto-archived snapshot of the previous session |
 
-## 鼠标穿透
+---
 
-- 透明空白区域的点击会穿透到桌面。
-- 鼠标悬停到节点 / 编辑器 / 历史面板区域才会响应操作。
+## Running Tests
 
-## 单词翻译
+```bash
+npm test
+```
 
-- 单击左上角 ⠿ 按钮打开翻译框。
-- 输入英文自动翻译为中文，输入中文自动翻译为英文。
-- 按 `Enter` 或等待自动翻译。
-- 再次单击按钮或按 `Esc` 关闭。
+---
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repo and create a feature branch.
+2. Keep changes focused — one concern per PR.
+3. Run `npm test` before submitting.
+4. Open an issue first for larger changes so we can discuss the approach.
+
+---
+
+## License
+
+[MIT](LICENSE)

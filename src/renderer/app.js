@@ -4,7 +4,6 @@ const GRAPH = {
   ROW_H: 32,
   COL_W: 18,
   PAD_LEFT: 18,
-  DOT_R: 5,
   LINE_W: 2,
   COLORS: [
     "#4078c0", // blue
@@ -25,7 +24,6 @@ function graphColor(col) {
 
 const stateRef = {
   value: null,
-  selectedSessionId: null,
   historyOpen: false
 };
 
@@ -34,8 +32,8 @@ const elements = {
   graphCanvas: document.querySelector("#graphCanvas"),
   graphNodes: document.querySelector("#graphNodes"),
   historyPanel: document.querySelector("#historyPanel"),
-  sessionList: document.querySelector("#sessionList"),
-  eventsLog: document.querySelector("#eventsLog"),
+  historyClose: document.querySelector("#historyClose"),
+  snapshotList: document.querySelector("#snapshotList"),
   toast: document.querySelector("#toast"),
   titleEditor: document.querySelector("#titleEditor"),
   titleEditorLabel: document.querySelector("#titleEditorLabel"),
@@ -98,7 +96,7 @@ function isInteractiveTarget(target) {
   }
   return Boolean(
     target.closest(
-      ".graph-node, .qbtn, .history-panel, .title-editor, .session-btn, .events-log, .editor-input, .editor-btn, .drag-bar, .translate-popup"
+      ".graph-node, .qbtn, .history-panel, .title-editor, .editor-input, .editor-btn, .drag-bar, .translate-popup, .snapshot-restore-btn, .history-close-btn"
     )
   );
 }
@@ -142,20 +140,27 @@ function flattenTree(state) {
     return rows;
   }
 
-  function dfs(node, depth, isLast) {
+  function dfs(node, depth, isLast, parentCol, isFirst, parentRowIndex) {
     const children = getChildren(state, node);
+    // Root (depth 0) and its direct children (depth 1) are on col 0
+    const col = depth <= 1 ? 0 : parentCol + 1;
+    const myRowIndex = rows.length;
+
     rows.push({
       node,
       depth,
+      col,
+      parentCol,
       isLast,
-      hasChildren: children.length > 0
+      isFirst,
+      parentRowIndex
     });
     children.forEach((child, i) => {
-      dfs(child, depth + 1, i === children.length - 1);
+      dfs(child, depth + 1, i === children.length - 1, col, i === 0, myRowIndex);
     });
   }
 
-  dfs(root, 0, true);
+  dfs(root, 0, true, 0, true, -1);
   return rows;
 }
 
@@ -164,7 +169,7 @@ function flattenTree(state) {
 function drawGraphLines(rows) {
   const canvas = elements.graphCanvas;
   const dpr = window.devicePixelRatio || 1;
-  const maxCol = rows.reduce((m, r) => Math.max(m, r.depth), 0);
+  const maxCol = rows.reduce((m, r) => Math.max(m, r.col), 0);
   const canvasW = GRAPH.PAD_LEFT + (maxCol + 1) * GRAPH.COL_W + 20;
   const canvasH = rows.length * GRAPH.ROW_H;
 
@@ -178,95 +183,95 @@ function drawGraphLines(rows) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // Compute active columns state for each row
-  const activeCols = new Set();
-  const rowMeta = [];
+  // --- Build independent line segments, one per sibling group ---
+  // Each segment covers the row range of one group of siblings under the same parent.
+  // Two branches that happen to share the same column number but belong to different
+  // parents are stored as SEPARATE segments and never merged.
+  const segments = []; // { col, startRow, endRow }
+  const openStack = []; // { col, parentCol, startRow }
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const col = row.depth;
-
-    // Snapshot active columns BEFORE processing this row
-    const activeSnapshot = new Set(activeCols);
-
-    // Determine which column gets deactivated at this row
-    let deactivateCol = -1;
-    if (row.isLast && col > 0) {
-      deactivateCol = col - 1;
+  rows.forEach((row, i) => {
+    // A new branch segment opens with the FIRST child that moves right
+    if (row.isFirst && row.col > row.parentCol) {
+      openStack.push({ col: row.col, parentCol: row.parentCol, startRow: i });
     }
-
-    rowMeta.push({
-      col,
-      activeBefore: activeSnapshot,
-      deactivateCol
-    });
-
-    // Update active columns AFTER this row
-    if (row.hasChildren) {
-      activeCols.add(col);
+    // The segment closes with the LAST sibling in that same group
+    if (row.isLast && row.col > row.parentCol) {
+      for (let j = openStack.length - 1; j >= 0; j--) {
+        if (openStack[j].col === row.col && openStack[j].parentCol === row.parentCol) {
+          const seg = openStack.splice(j, 1)[0];
+          segments.push({ col: seg.col, startRow: seg.startRow, endRow: i });
+          break;
+        }
+      }
     }
-    if (row.isLast && col > 0) {
-      activeCols.delete(col - 1);
-    }
+  });
+
+  // --- Main axis (col 0): a single continuous line from first to last trunk node ---
+  // Drawing it as one stroke avoids any row-boundary gap, and it naturally passes
+  // through all branch-child rows in between.
+  const col0Indices = rows.reduce((acc, r, i) => { if (r.col === 0) acc.push(i); return acc; }, []);
+  const mainStart = col0Indices[0] ?? -1;
+  const mainEnd = col0Indices[col0Indices.length - 1] ?? -1;
+
+  if (mainStart !== -1 && mainEnd > mainStart) {
+    const lineX = GRAPH.PAD_LEFT;
+    const y1 = mainStart * GRAPH.ROW_H + GRAPH.ROW_H / 2;
+    const y2 = mainEnd * GRAPH.ROW_H + GRAPH.ROW_H / 2;
+    ctx.strokeStyle = graphColor(0);
+    ctx.lineWidth = GRAPH.LINE_W;
+    ctx.beginPath();
+    ctx.moveTo(lineX, y1);
+    ctx.lineTo(lineX, y2);
+    ctx.stroke();
   }
 
-  // Draw lines and dots
+  // --- Draw branch segments and Bezier connectors ---
   for (let i = 0; i < rows.length; i++) {
-    const meta = rowMeta[i];
-    const col = meta.col;
+    const row = rows[i];
+    const col = row.col;
     const dotX = GRAPH.PAD_LEFT + col * GRAPH.COL_W;
     const dotY = i * GRAPH.ROW_H + GRAPH.ROW_H / 2;
 
-    // Draw vertical continuation lines for all active columns
-    for (const ac of meta.activeBefore) {
-      const lineX = GRAPH.PAD_LEFT + ac * GRAPH.COL_W;
-      const color = graphColor(ac);
-      ctx.strokeStyle = color;
+    // Branch segments: each is an independent sibling group
+    for (const seg of segments) {
+      if (i < seg.startRow || i > seg.endRow) continue;
+      if (seg.startRow === seg.endRow) continue; // single child — no vertical line needed
+
+      const lineX = GRAPH.PAD_LEFT + seg.col * GRAPH.COL_W;
+      ctx.strokeStyle = graphColor(seg.col);
       ctx.lineWidth = GRAPH.LINE_W;
       ctx.beginPath();
-
-      if (ac === meta.deactivateCol) {
-        // Line terminates at this row — draw from top to dot center
+      if (i === seg.startRow) {
+        ctx.moveTo(lineX, dotY);
+        ctx.lineTo(lineX, (i + 1) * GRAPH.ROW_H);
+      } else if (i === seg.endRow) {
         ctx.moveTo(lineX, i * GRAPH.ROW_H);
         ctx.lineTo(lineX, dotY);
       } else {
-        // Line passes through — draw full height
         ctx.moveTo(lineX, i * GRAPH.ROW_H);
         ctx.lineTo(lineX, (i + 1) * GRAPH.ROW_H);
       }
       ctx.stroke();
     }
 
-    // Draw continuation line below dot if node has children
-    if (rows[i].hasChildren) {
-      const lineX = GRAPH.PAD_LEFT + col * GRAPH.COL_W;
+    // Bezier branch-entry connector: starts from the PARENT dot center so there
+    // is never a gap between a parent node and its first branch child.
+    if (col > row.parentCol && row.isFirst && row.parentRowIndex >= 0) {
+      const parentX = GRAPH.PAD_LEFT + row.parentCol * GRAPH.COL_W;
+      const parentDotY = row.parentRowIndex * GRAPH.ROW_H + GRAPH.ROW_H / 2;
+      const span = dotY - parentDotY;
       ctx.strokeStyle = graphColor(col);
       ctx.lineWidth = GRAPH.LINE_W;
       ctx.beginPath();
-      ctx.moveTo(lineX, dotY);
-      ctx.lineTo(lineX, (i + 1) * GRAPH.ROW_H);
+      ctx.moveTo(parentX, parentDotY);
+      ctx.bezierCurveTo(
+        parentX, parentDotY + span * 0.5,
+        dotX, dotY - span * 0.1,
+        dotX, dotY
+      );
       ctx.stroke();
     }
-
-    // Draw branch connector from parent column to this column
-    if (col > 0) {
-      const parentCol = col - 1;
-      const parentX = GRAPH.PAD_LEFT + parentCol * GRAPH.COL_W;
-      const childX = dotX;
-      const color = graphColor(col);
-
-      ctx.strokeStyle = color;
-      ctx.lineWidth = GRAPH.LINE_W;
-      ctx.beginPath();
-      ctx.moveTo(parentX, i * GRAPH.ROW_H);
-      // Bezier curve: from parent column top → to dot position
-      const cpY1 = i * GRAPH.ROW_H + GRAPH.ROW_H * 0.4;
-      const cpY2 = dotY - GRAPH.ROW_H * 0.1;
-      ctx.bezierCurveTo(parentX, cpY1, childX, cpY2, childX, dotY);
-      ctx.stroke();
-    }
-
-    // Dots are rendered as HTML elements, not on canvas
   }
 }
 
@@ -286,9 +291,9 @@ function createQuickButton(text, title, onClick) {
 }
 
 function createGraphNodeElement(row, rowIndex) {
-  const { node, depth } = row;
+  const { node, col } = row;
   const isFocused = node.id === stateRef.value?.focusedNodeId;
-  const dotX = GRAPH.PAD_LEFT + depth * GRAPH.COL_W;
+  const dotX = GRAPH.PAD_LEFT + col * GRAPH.COL_W;
   const dotY = rowIndex * GRAPH.ROW_H + GRAPH.ROW_H / 2;
 
   const el = document.createElement("div");
@@ -297,7 +302,7 @@ function createGraphNodeElement(row, rowIndex) {
   // Position so the dot center (5px from left edge) aligns with canvas line x
   el.style.left = `${dotX - 5}px`;
   el.style.top = `${dotY - GRAPH.ROW_H / 2}px`;
-  el.style.color = graphColor(depth);
+  el.style.color = graphColor(col);
 
   el.addEventListener("click", () => {
     void focusNode(node.id);
@@ -517,7 +522,7 @@ async function renameNode(nodeId = null) {
     return;
   }
   const title = await askTitle("Rename task", focused.title, focused.id);
-  if (!title) {
+  if (title === null) {
     return;
   }
   stateRef.value = await window.todoApi.tree.renameNode(focused.id, title);
@@ -573,47 +578,185 @@ function toggleHistory(forceValue = null) {
   elements.historyPanel.setAttribute("aria-hidden", stateRef.historyOpen ? "false" : "true");
   if (stateRef.historyOpen) {
     setMousePassthrough(false);
+    void loadSnapshots();
   } else if (!isTitleEditorOpen()) {
     setMousePassthrough(true);
   }
-  if (stateRef.historyOpen) {
-    void loadSessions();
-  }
 }
 
-async function loadSessions() {
-  const sessions = await window.todoApi.archive.listSessions();
-  if (!stateRef.selectedSessionId) {
-    stateRef.selectedSessionId = stateRef.value?.sessionId ?? sessions[0] ?? null;
-  }
-  if (stateRef.selectedSessionId && !sessions.includes(stateRef.selectedSessionId)) {
-    stateRef.selectedSessionId = sessions[0] ?? null;
+/**
+ * Formats a snapshot ID ("2026-02-21_10-30-00") into a readable date string.
+ */
+function formatSnapshotDate(snapshotId) {
+  // "2026-02-21_10-30-00" → "2026/02/21  10:30"
+  const match = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})/.exec(snapshotId);
+  if (!match) return snapshotId;
+  const [, y, mo, d, h, mi] = match;
+  return `${y}/${mo}/${d}  ${h}:${mi}`;
+}
+
+/**
+ * Walks the active nodes of a snapshot state and returns an array of
+ * { title, depth } objects (root excluded, depth starts at 0 = top-level tasks).
+ */
+function buildMiniTree(snapshotState) {
+  const { nodes, rootId } = snapshotState;
+  const result = [];
+
+  function walk(nodeId, depth) {
+    const node = nodes[nodeId];
+    if (!node || node.status !== "active") return;
+    if (depth > 0) {
+      result.push({ title: node.title, depth: depth - 1 });
+    }
+    for (const childId of node.childrenIds) {
+      walk(childId, depth + 1);
+    }
   }
 
-  elements.sessionList.innerHTML = "";
-  for (const sessionId of sessions) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `session-btn${sessionId === stateRef.selectedSessionId ? " active" : ""}`;
-    button.textContent = sessionId;
-    button.addEventListener("click", () => {
-      stateRef.selectedSessionId = sessionId;
-      void loadSessions();
-    });
-    elements.sessionList.append(button);
+  walk(rootId, 0);
+  return result;
+}
+
+/** Counts active (non-root) nodes in a snapshot state. */
+function countActiveTasks(snapshotState) {
+  const { nodes, rootId } = snapshotState;
+  let count = 0;
+  for (const [id, node] of Object.entries(nodes)) {
+    if (id !== rootId && node.status === "active") count++;
+  }
+  return count;
+}
+
+/**
+ * Builds a DOM card element for a snapshot entry.
+ * snapshotState is the parsed JSON from the .snapshot.json file.
+ */
+function buildSnapshotCard(snapshotId, snapshotState) {
+  const MAX_VISIBLE_ROWS = 6;
+  const card = document.createElement("div");
+  card.className = "snapshot-card";
+
+  // ── Header: date  |  restore button  |  badge ──
+  const header = document.createElement("div");
+  header.className = "snapshot-card-header";
+
+  const dateEl = document.createElement("span");
+  dateEl.className = "snapshot-date";
+  dateEl.textContent = formatSnapshotDate(snapshotId);
+
+  const restoreBtn = document.createElement("button");
+  restoreBtn.type = "button";
+  restoreBtn.className = "snapshot-restore-btn";
+  restoreBtn.textContent = "恢复";
+  restoreBtn.addEventListener("click", () => {
+    void restoreFromSnapshot(snapshotId, restoreBtn);
+  });
+
+  const taskCount = countActiveTasks(snapshotState);
+  const badge = document.createElement("span");
+  badge.className = "snapshot-badge";
+  badge.textContent = `${taskCount} 项`;
+
+  header.append(dateEl, restoreBtn, badge);
+  card.append(header);
+
+  // ── Mini tree ──
+  const treeRows = buildMiniTree(snapshotState);
+  if (treeRows.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "snapshot-empty";
+    empty.textContent = "（空会话）";
+    card.append(empty);
+  } else {
+    const tree = document.createElement("div");
+    tree.className = "snapshot-tree";
+    const visibleRows = treeRows.slice(0, MAX_VISIBLE_ROWS);
+    for (const { title, depth } of visibleRows) {
+      const row = document.createElement("div");
+      row.className = "snapshot-tree-row";
+
+      if (depth > 0) {
+        const indent = document.createElement("span");
+        indent.className = "snapshot-tree-indent";
+        indent.textContent = "  ".repeat(depth - 1) + "└ ";
+        row.append(indent);
+      }
+
+      const dot = document.createElement("span");
+      dot.className = "snapshot-tree-dot";
+      // Use graph colors matching depth
+      dot.style.color = GRAPH.COLORS[depth % GRAPH.COLORS.length];
+
+      const label = document.createElement("span");
+      label.className = "snapshot-tree-label";
+      label.textContent = title;
+
+      row.append(dot, label);
+      tree.append(row);
+    }
+    card.append(tree);
+
+    if (treeRows.length > MAX_VISIBLE_ROWS) {
+      const more = document.createElement("div");
+      more.className = "snapshot-overflow";
+      more.textContent = `…另有 ${treeRows.length - MAX_VISIBLE_ROWS} 项`;
+      card.append(more);
+    }
+  }  // ← close else block
+
+  return card;
+}
+
+async function loadSnapshots() {
+  const list = elements.snapshotList;
+  list.innerHTML = "";
+
+  let snapshots;
+  try {
+    snapshots = await window.todoApi.archive.listSnapshots();
+  } catch {
+    snapshots = [];
   }
 
-  if (!stateRef.selectedSessionId) {
-    elements.eventsLog.textContent = "No sessions";
+  if (snapshots.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "snapshot-no-history";
+    empty.textContent = "暂无历史记录。\n每次启动新会话时，上次的内容会自动存档。";
+    list.append(empty);
     return;
   }
 
-  try {
-    const lines = await window.todoApi.archive.readEvents(stateRef.selectedSessionId);
-    elements.eventsLog.textContent = lines.join("\n");
-  } catch {
-    elements.eventsLog.textContent = "Read error";
+  // Load all snapshots in parallel for speed
+  const states = await Promise.all(
+    snapshots.map((id) =>
+      window.todoApi.archive.readSnapshot(id).catch(() => null)
+    )
+  );
+
+  for (let i = 0; i < snapshots.length; i++) {
+    const state = states[i];
+    if (!state) continue;
+    list.append(buildSnapshotCard(snapshots[i], state));
   }
+}
+
+async function restoreFromSnapshot(snapshotId, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const newState = await window.todoApi.session.restore(snapshotId);
+    stateRef.value = newState;
+    renderTree();
+    toggleHistory(false);
+    showToast("✅ 已恢复历史记录", 3000);
+  } catch (err) {
+    showToast(`恢复失败: ${err.message}`, 5000);
+    if (btn) btn.disabled = false;
+  }
+}
+
+function setupHistory() {
+  elements.historyClose.addEventListener("click", () => toggleHistory(false));
 }
 
 /* ========== Keyboard ========== */
@@ -871,6 +1014,7 @@ async function start() {
   await withGuard(async () => {
     await syncState();
     setupTitleEditor();
+    setupHistory();
     setupKeyboard();
     setupMousePassthrough();
     setupIpcListeners();

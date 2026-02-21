@@ -11,6 +11,7 @@ let controller = null;
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let isDragging = false;
 let dockEdge = null;
 let suppressDockEvent = false;
 let normalWidth = 360;
@@ -88,7 +89,7 @@ function emitDockState() {
 }
 
 function handleWindowSnap() {
-  if (!mainWindow || suppressDockEvent) {
+  if (!mainWindow || suppressDockEvent || isDragging) {
     return;
   }
   const bounds = mainWindow.getBounds();
@@ -264,7 +265,10 @@ function setupIpc() {
   ipcMain.handle("tree:redo", async () => controller.redo());
   ipcMain.handle("archive:listSessions", async () => controller.listSessions());
   ipcMain.handle("archive:readEvents", async (_event, sessionId) => controller.readEvents(sessionId));
+  ipcMain.handle("archive:listSnapshots", async () => controller.listSnapshots());
+  ipcMain.handle("archive:readSnapshot", async (_event, snapshotId) => controller.readSnapshot(snapshotId));
   ipcMain.handle("session:save", async () => controller.saveSession());
+  ipcMain.handle("session:restore", async (_event, snapshotId) => controller.restoreSession(snapshotId));
   ipcMain.handle("ui:start-drag", async () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       return [0, 0];
@@ -276,6 +280,7 @@ function setupIpc() {
     if (!mainWindow || mainWindow.isDestroyed()) {
       return;
     }
+    isDragging = true;
     suppressDockEvent = true;
     const bounds = mainWindow.getBounds();
     mainWindow.setBounds({
@@ -286,6 +291,7 @@ function setupIpc() {
     });
   });
   ipcMain.on("ui:drag-end", () => {
+    isDragging = false;
     suppressDockEvent = false;
   });
   ipcMain.on("ui:set-ignore-mouse-events", (_event, ignore) => {
